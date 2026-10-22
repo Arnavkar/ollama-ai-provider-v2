@@ -1,29 +1,38 @@
 import {
-  LanguageModelV2,
-  LanguageModelV2CallWarning,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+  LanguageModelV4FinishReason,
+  LanguageModelV4ResponseMetadata,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Usage,
+  SharedV4Headers,
+  SharedV4Warning,
 } from "@ai-sdk/provider";
 import {
   combineHeaders,
   createJsonResponseHandler,
-  createJsonStreamResponseHandler,
   postJsonToApi,
 } from "@ai-sdk/provider-utils";
+import { createNdjsonStreamResponseHandler } from "../common/ndjson-stream-handler";
 import { OllamaConfig } from "../common/ollama-config";
 import { ollamaFailedResponseHandler } from "../completion/ollama-error";
 import { OllamaChatModelId } from "../ollama-chat-settings";
-import { 
-  OllamaRequestBuilder,
-  OllamaResponsesProviderOptions 
-} from "./ollama-responses-request-builder";
-import { 
-  OllamaResponseProcessor, 
-  baseOllamaResponseSchema 
+import {
+  OllamaResponseProcessor,
+  OllamaResponse,
+  baseOllamaResponseSchema,
 } from "./ollama-responses-processor";
+import {
+  OllamaRequestBuilder,
+  OllamaResponsesProviderOptions,
+} from "./ollama-responses-request-builder";
 import { OllamaStreamProcessor } from "./ollama-responses-stream-processor";
 
-export class OllamaResponsesLanguageModel implements LanguageModelV2 {
-  readonly specificationVersion = "v2";
+export class OllamaResponsesLanguageModel implements LanguageModelV4 {
+  readonly specificationVersion = "v4" as const;
   readonly modelId: OllamaChatModelId;
+  readonly provider: string;
 
   private readonly config: OllamaConfig;
   private readonly requestBuilder: OllamaRequestBuilder;
@@ -32,24 +41,26 @@ export class OllamaResponsesLanguageModel implements LanguageModelV2 {
   constructor(modelId: OllamaChatModelId, config: OllamaConfig) {
     this.modelId = modelId;
     this.config = config;
+    this.provider = config.provider;
     this.requestBuilder = new OllamaRequestBuilder();
     this.responseProcessor = new OllamaResponseProcessor(config);
   }
 
   readonly supportedUrls: Record<string, RegExp[]> = {
-     image: [
-      /^https?:\/\/.*\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i,
-      /^data:image\/[^;]+;base64,/i,
-    ]
+    "image/*": [/^https?:\/\/.*$/],
   };
 
-  get provider(): string {
-    return this.config.provider;
-  }
-
-  async doGenerate(
-    options: Parameters<LanguageModelV2["doGenerate"]>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2["doGenerate"]>>> {
+  async doGenerate(options: LanguageModelV4CallOptions): Promise<{
+    content: Array<LanguageModelV4Content>;
+    finishReason: LanguageModelV4FinishReason;
+    usage: LanguageModelV4Usage;
+    warnings: Array<SharedV4Warning>;
+    request?: { body?: unknown };
+    response?: LanguageModelV4ResponseMetadata & {
+      headers?: SharedV4Headers;
+      body?: unknown;
+    };
+  }> {
     const { args: body, warnings } = await this.prepareRequest(options);
 
     const {
@@ -63,13 +74,17 @@ export class OllamaResponsesLanguageModel implements LanguageModelV2 {
       }),
       headers: combineHeaders(this.config.headers(), options.headers),
       body: { ...body, stream: false },
-      failedResponseHandler: ollamaFailedResponseHandler,
-      successfulResponseHandler: createJsonResponseHandler(baseOllamaResponseSchema),
+      failedResponseHandler: ollamaFailedResponseHandler as any,
+      successfulResponseHandler: createJsonResponseHandler(
+        baseOllamaResponseSchema,
+      ),
       abortSignal: options.abortSignal,
       fetch: this.config.fetch,
     });
 
-    const processedResponse = this.responseProcessor.processGenerateResponse(response);
+    const processedResponse = this.responseProcessor.processGenerateResponse(
+      response as OllamaResponse,
+    );
 
     return {
       ...processedResponse,
@@ -84,9 +99,15 @@ export class OllamaResponsesLanguageModel implements LanguageModelV2 {
     };
   }
 
-  async doStream(
-    options: Parameters<LanguageModelV2["doStream"]>[0],
-  ): Promise<Awaited<ReturnType<LanguageModelV2["doStream"]>>> {
+  async doStream(options: LanguageModelV4CallOptions): Promise<{
+    stream: ReadableStream<LanguageModelV4StreamPart>;
+    warnings: Array<SharedV4Warning>;
+    request?: { body?: unknown };
+    response?: LanguageModelV4ResponseMetadata & {
+      headers?: SharedV4Headers;
+      body?: unknown;
+    };
+  }> {
     const { args: body, warnings } = await this.prepareRequest(options);
 
     const { responseHeaders, value: response } = await postJsonToApi({
@@ -96,8 +117,10 @@ export class OllamaResponsesLanguageModel implements LanguageModelV2 {
       }),
       headers: combineHeaders(this.config.headers(), options.headers),
       body: { ...body, stream: true },
-      failedResponseHandler: ollamaFailedResponseHandler,
-      successfulResponseHandler: createJsonStreamResponseHandler(baseOllamaResponseSchema),
+      failedResponseHandler: ollamaFailedResponseHandler as any,
+      successfulResponseHandler: createNdjsonStreamResponseHandler(
+        baseOllamaResponseSchema,
+      ),
       abortSignal: options.abortSignal,
       fetch: this.config.fetch,
     });
@@ -106,14 +129,15 @@ export class OllamaResponsesLanguageModel implements LanguageModelV2 {
 
     return {
       stream: response.pipeThrough(
-        streamProcessor.createTransformStream(warnings, options)
+        streamProcessor.createTransformStream(warnings, options),
       ),
       request: { body },
       response: { headers: responseHeaders },
+      warnings: warnings,
     };
   }
 
-  private async prepareRequest(options: Parameters<LanguageModelV2["doGenerate"]>[0]) {
+  private async prepareRequest(options: LanguageModelV4CallOptions) {
     return await this.requestBuilder.buildRequest({
       modelId: this.modelId,
       ...options,

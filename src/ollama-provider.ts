@@ -1,41 +1,42 @@
 import {
-  EmbeddingModelV2,
-  LanguageModelV2,
-  ProviderV2,
+  EmbeddingModelV4,
+  LanguageModelV4,
+  ProviderV4,
   NoSuchModelError,
-} from '@ai-sdk/provider';
+} from "@ai-sdk/provider";
+import { FetchFunction, withoutTrailingSlash } from "@ai-sdk/provider-utils";
 import {
-  FetchFunction,
-  withoutTrailingSlash,
-} from '@ai-sdk/provider-utils';
-import { OllamaChatModelId, ollamaProviderOptions } from './ollama-chat-settings';
-import { OllamaCompletionLanguageModel } from './completion/ollama-completion-language-model';
+  OllamaChatModelId,
+  OllamaProviderOptions,
+  ollamaProviderOptions,
+} from "./ollama-chat-settings";
+import { OllamaCompletionLanguageModel } from "./completion/ollama-completion-language-model";
 import {
   OllamaCompletionModelId,
   OllamaCompletionSettings,
-} from './completion/ollama-completion-settings';
-import { OllamaEmbeddingModel } from './embedding/ollama-embedding-model';
+} from "./completion/ollama-completion-settings";
+import { OllamaEmbeddingModel } from "./embedding/ollama-embedding-model";
 import {
   OllamaEmbeddingModelId,
   OllamaEmbeddingSettings,
-} from './embedding/ollama-embedding-settings';
-import { OllamaResponsesLanguageModel } from './responses/ollama-responses-language-model';
+} from "./embedding/ollama-embedding-settings";
+import { OllamaResponsesLanguageModel } from "./responses/ollama-responses-language-model";
 
-export interface OllamaProvider extends ProviderV2 {
-  (modelId: OllamaChatModelId): LanguageModelV2;
+export interface OllamaProvider extends ProviderV4 {
+  (modelId: OllamaChatModelId): LanguageModelV4;
 
   /**
 Creates an Ollama model for text generation.
    */
-  languageModel(modelId: OllamaChatModelId): LanguageModelV2;
+  languageModel(modelId: OllamaChatModelId): LanguageModelV4;
 
   /**
 Creates an Ollama chat model for text generation.
    */
   chat(
     modelId: OllamaChatModelId,
-    settings?: typeof ollamaProviderOptions,
-  ): LanguageModelV2;
+    settings?: OllamaProviderOptions,
+  ): LanguageModelV4;
 
   /**
 Creates an Ollama completion model for text generation.
@@ -43,7 +44,7 @@ Creates an Ollama completion model for text generation.
   completion(
     modelId: OllamaCompletionModelId,
     settings?: OllamaCompletionSettings,
-  ): LanguageModelV2;
+  ): LanguageModelV4;
 
   /**
 Creates a model for text embeddings.
@@ -51,7 +52,7 @@ Creates a model for text embeddings.
   embedding(
     modelId: OllamaEmbeddingModelId,
     settings?: OllamaEmbeddingSettings,
-  ): EmbeddingModelV2<string>;
+  ): EmbeddingModelV4;
 
   /**
 Creates a model for text embeddings.
@@ -61,7 +62,7 @@ Creates a model for text embeddings.
   textEmbedding(
     modelId: OllamaEmbeddingModelId,
     settings?: OllamaEmbeddingSettings,
-  ): EmbeddingModelV2<string>;
+  ): EmbeddingModelV4;
 
   /**
 Creates a model for text embeddings.
@@ -69,8 +70,7 @@ Creates a model for text embeddings.
   textEmbeddingModel(
     modelId: OllamaEmbeddingModelId,
     settings?: OllamaEmbeddingSettings,
-  ): EmbeddingModelV2<string>;
-
+  ): EmbeddingModelV4;
 }
 
 export interface OllamaProviderSettings {
@@ -99,7 +99,7 @@ Ollama compatibility mode. Should be set to `strict` when using the Ollama API,
 and `compatible` when using 3rd party providers. In `compatible` mode, newer
 information such as streamOptions are not being sent. Defaults to 'compatible'.
    */
-  compatibility?: 'strict' | 'compatible';
+  compatibility?: "strict" | "compatible";
 
   /**
 Provider name. Overrides the `ollama` default name for 3rd party providers.
@@ -120,13 +120,13 @@ export function createOllama(
   options: OllamaProviderSettings = {},
 ): OllamaProvider {
   const baseURL =
-    withoutTrailingSlash(options.baseURL) ?? 'http://127.0.0.1:11434/api';
+    withoutTrailingSlash(options.baseURL) ?? "http://127.0.0.1:11434/api";
 
-  const providerName = options.name ?? 'ollama';
+  const providerName = options.name ?? "ollama";
 
   const getHeaders = () => ({
-    'Ollama-Organization': options.organization,
-    'Ollama-Project': options.project,
+    "Ollama-Organization": options.organization,
+    "Ollama-Project": options.project,
     ...options.headers,
   });
 
@@ -152,16 +152,15 @@ export function createOllama(
       fetch: options.fetch,
     });
 
-  const createLanguageModel = (
-    modelId: OllamaChatModelId) => {
+  function createLanguageModel(modelId: OllamaChatModelId) {
     if (new.target) {
       throw new Error(
-        'The Ollama model function cannot be called with the new keyword.',
+        "The Ollama model function cannot be called with the new keyword.",
       );
     }
 
     return createResponsesModel(modelId);
-  };
+  }
 
   const createResponsesModel = (modelId: OllamaChatModelId) => {
     return new OllamaResponsesLanguageModel(modelId, {
@@ -173,20 +172,28 @@ export function createOllama(
   };
 
   const provider = function (modelId: OllamaChatModelId) {
+    if (new.target) {
+      throw new Error(
+        "The Ollama model function cannot be called with the new keyword.",
+      );
+    }
+
     return createLanguageModel(modelId);
   };
 
+  provider.specificationVersion = "v4" as const;
   provider.languageModel = createLanguageModel;
   provider.chat = createLanguageModel;
   provider.completion = createCompletionModel;
   provider.embedding = createEmbeddingModel;
   provider.textEmbedding = createEmbeddingModel;
   provider.textEmbeddingModel = createEmbeddingModel;
+  provider.embeddingModel = createEmbeddingModel;
   provider.imageModel = (modelId: string) => {
     throw new NoSuchModelError({
       modelId,
-      modelType: 'imageModel',
-      message: 'Image generation is unsupported with Ollama',
+      modelType: "imageModel",
+      message: "Image generation is unsupported with Ollama",
     });
   };
 

@@ -9,18 +9,19 @@ export type ChatCompletionMessage =
   | ChatCompletionFunctionMessage;
 
 export interface ChatCompletionSystemMessage {
-  role: 'system';
+  role: "system";
   content: string;
 }
 
 export interface ChatCompletionDeveloperMessage {
-  role: 'developer';
+  role: "developer";
   content: string;
 }
 
 export interface ChatCompletionUserMessage {
-  role: 'user';
+  role: "user";
   content: string | Array<ChatCompletionContentPart>;
+  images?: Array<Uint8Array | string | URL>;
 }
 
 export type ChatCompletionContentPart =
@@ -29,22 +30,22 @@ export type ChatCompletionContentPart =
   | ChatCompletionContentPartInputAudio;
 
 export interface ChatCompletionContentPartText {
-  type: 'text';
+  type: "text";
   text: string;
 }
 
 export interface ChatCompletionContentPartImage {
-  type: 'image_url';
+  type: "image_url";
   image_url: { url: string };
 }
 
 export interface ChatCompletionContentPartInputAudio {
-  type: 'input_audio';
-  input_audio: { data: string; format: 'wav' | 'mp3' };
+  type: "input_audio";
+  input_audio: { data: string; format: "wav" | "mp3" };
 }
 
 export interface ChatCompletionAssistantMessage {
-  role: 'assistant';
+  role: "assistant";
   content?: string | null;
   tool_calls?: Array<ChatCompletionMessageToolCall>;
   thinking?: string;
@@ -52,7 +53,7 @@ export interface ChatCompletionAssistantMessage {
 }
 
 export interface ChatCompletionMessageToolCall {
-  type: 'function';
+  type: "function";
   id: string;
   function: {
     arguments: object;
@@ -61,7 +62,7 @@ export interface ChatCompletionMessageToolCall {
 }
 
 export interface ChatCompletionToolMessage {
-  role: 'tool';
+  role: "tool";
   content: string;
   tool_call_id: string;
 }
@@ -71,7 +72,7 @@ export interface ChatCompletionToolMessage {
  * @deprecated this API is supported but deprecated by Ollama.
  */
 export interface ChatCompletionFunctionMessage {
-  role: 'function';
+  role: "function";
   content: string;
   name: string;
 }

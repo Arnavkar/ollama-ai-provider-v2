@@ -1,23 +1,18 @@
-import {
-  LanguageModelV2CallWarning,
-  LanguageModelV2,
-} from "@ai-sdk/provider";
+import { LanguageModelV4CallOptions, SharedV4Warning } from "@ai-sdk/provider";
 import { parseProviderOptions } from "@ai-sdk/provider-utils";
 import { z } from "zod/v4";
-import { convertToOllamaResponsesMessages } from "./convert-to-ollama-responses-messages";
+import { resolveOllamaThinkFlag } from "../adaptors/ollama-v4-helpers";
 import { convertToOllamaChatMessages } from "../adaptors/convert-to-ollama-chat-messages";
+import {
+  OllamaChatModelId,
+  ollamaProviderOptions,
+} from "../ollama-chat-settings";
+import { convertToOllamaResponsesMessages } from "./convert-to-ollama-responses-messages";
 import { prepareResponsesTools } from "./ollama-responses-prepare-tools";
-import { OllamaChatModelId } from "../ollama-chat-settings";
-
-const ollamaResponsesProviderOptionsSchema = z.object({
-  user: z.string().nullish(),
-  think: z.boolean().nullish(),
-  parallelToolCalls: z.boolean().nullish(),
-  strictJsonSchema: z.boolean().nullish(),
-});
+import { OllamaChatPrompt } from "../adaptors/ollama-chat-prompt";
 
 export type OllamaResponsesProviderOptions = z.infer<
-  typeof ollamaResponsesProviderOptionsSchema
+  typeof ollamaProviderOptions
 >;
 
 interface RequestBuilderOptions {
@@ -30,27 +25,28 @@ interface RequestBuilderOptions {
   presencePenalty?: number;
   frequencyPenalty?: number;
   seed?: number;
-  prompt: any;
-  providerOptions?: any;
-  tools?: any;
-  toolChoice?: any;
-  responseFormat?: any;
+  reasoning?: LanguageModelV4CallOptions["reasoning"];
+  prompt: LanguageModelV4CallOptions["prompt"];
+  providerOptions?: LanguageModelV4CallOptions["providerOptions"];
+  tools?: LanguageModelV4CallOptions["tools"];
+  toolChoice?: LanguageModelV4CallOptions["toolChoice"];
+  responseFormat?: LanguageModelV4CallOptions["responseFormat"];
 }
 
 interface RequestBuilderResult {
   args: {
     model: OllamaChatModelId;
-    messages: any;
+    messages: OllamaChatPrompt;
     temperature?: number;
     top_p?: number;
     max_output_tokens?: number;
-    format?: any;
+    format?: unknown;
     user?: string;
     think?: boolean;
-    tools?: any;
-    tool_choice?: any;
+    tools?: unknown;
+    tool_choice?: unknown;
   };
-  warnings: LanguageModelV2CallWarning[];
+  warnings: SharedV4Warning[];
 }
 
 export class OllamaRequestBuilder {
@@ -64,6 +60,7 @@ export class OllamaRequestBuilder {
     presencePenalty,
     frequencyPenalty,
     seed,
+    reasoning,
     prompt,
     providerOptions,
     tools,
@@ -78,16 +75,14 @@ export class OllamaRequestBuilder {
       stopSequences,
     });
 
-    const { messages, warnings: messageWarnings } =
-      convertToOllamaResponsesMessages({
-        prompt,
-        systemMessageMode: "system",
-      });
+    const { warnings: messageWarnings } = convertToOllamaResponsesMessages({
+      prompt,
+      systemMessageMode: "system",
+    });
 
     warnings.push(...messageWarnings);
 
     const ollamaOptions = await this.parseProviderOptions(providerOptions);
-    const strictJsonSchema = ollamaOptions?.strictJsonSchema ?? false;
 
     const baseArgs = this.buildBaseArgs({
       modelId,
@@ -96,15 +91,19 @@ export class OllamaRequestBuilder {
       topP,
       maxOutputTokens,
       responseFormat,
+      reasoning,
       ollamaOptions,
+      warnings,
     });
 
-    const { tools: ollamaTools, toolChoice: ollamaToolChoice, toolWarnings } =
-      prepareResponsesTools({
-        tools,
-        toolChoice,
-        strictJsonSchema,
-      });
+    const {
+      tools: ollamaTools,
+      toolChoice: ollamaToolChoice,
+      toolWarnings,
+    } = prepareResponsesTools({
+      tools,
+      toolChoice,
+    });
 
     return {
       args: {
@@ -128,8 +127,8 @@ export class OllamaRequestBuilder {
     presencePenalty?: number;
     frequencyPenalty?: number;
     stopSequences?: string[];
-  }): LanguageModelV2CallWarning[] {
-    const warnings: LanguageModelV2CallWarning[] = [];
+  }): SharedV4Warning[] {
+    const warnings: SharedV4Warning[] = [];
 
     const unsupportedSettings = [
       { value: topK, name: "topK" },
@@ -141,18 +140,24 @@ export class OllamaRequestBuilder {
 
     for (const { value, name } of unsupportedSettings) {
       if (value != null) {
-        warnings.push({ type: "unsupported-setting", setting: name });
+        warnings.push({
+          type: "unsupported",
+          feature: "setting",
+          details: name,
+        });
       }
     }
 
     return warnings;
   }
 
-  private async parseProviderOptions(providerOptions: any): Promise<OllamaResponsesProviderOptions | null> {
+  private async parseProviderOptions(
+    providerOptions: LanguageModelV4CallOptions["providerOptions"],
+  ): Promise<OllamaResponsesProviderOptions | null> {
     const result = await parseProviderOptions({
       provider: "ollama",
       providerOptions,
-      schema: ollamaResponsesProviderOptionsSchema,
+      schema: ollamaProviderOptions,
     });
     return result ?? null;
   }
@@ -164,21 +169,26 @@ export class OllamaRequestBuilder {
     topP,
     maxOutputTokens,
     responseFormat,
+    reasoning,
     ollamaOptions,
+    warnings,
   }: {
     modelId: OllamaChatModelId;
-    prompt: any;
+    prompt: LanguageModelV4CallOptions["prompt"];
     temperature?: number;
     topP?: number;
     maxOutputTokens?: number;
-    responseFormat?: any;
+    responseFormat?: LanguageModelV4CallOptions["responseFormat"];
+    reasoning?: LanguageModelV4CallOptions["reasoning"];
     ollamaOptions: OllamaResponsesProviderOptions | null;
+    warnings: SharedV4Warning[];
   }) {
     return {
       model: modelId,
       messages: convertToOllamaChatMessages({
         prompt,
         systemMessageMode: "system",
+        warnings,
       }),
       temperature,
       top_p: topP,
@@ -188,8 +198,12 @@ export class OllamaRequestBuilder {
         format: responseFormat.schema != null ? responseFormat.schema : "json",
       }),
 
-      user: ollamaOptions?.user ?? undefined,
-      think: ollamaOptions?.think ?? false,
+      think: resolveOllamaThinkFlag({
+        reasoning,
+        ollamaThink: ollamaOptions?.think,
+        warnings,
+      }),
+      options: ollamaOptions?.options ?? undefined,
     };
   }
-} 
+}

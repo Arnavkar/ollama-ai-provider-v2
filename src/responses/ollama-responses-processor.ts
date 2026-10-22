@@ -1,8 +1,8 @@
 import {
-  LanguageModelV2Content,
-  LanguageModelV2FinishReason,
-  LanguageModelV2Usage,
-  SharedV2ProviderMetadata,
+  LanguageModelV4Content,
+  LanguageModelV4FinishReason,
+  LanguageModelV4Usage,
+  SharedV4ProviderMetadata,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { z } from "zod/v4";
@@ -46,15 +46,20 @@ export class OllamaResponseProcessor {
   constructor(private config: OllamaConfig) {}
 
   processGenerateResponse(response: OllamaResponse): {
-    content: LanguageModelV2Content[];
-    finishReason: LanguageModelV2FinishReason;
-    usage: LanguageModelV2Usage;
-    providerMetadata: SharedV2ProviderMetadata;
+    content: LanguageModelV4Content[];
+    finishReason: LanguageModelV4FinishReason;
+    usage: LanguageModelV4Usage;
+    providerMetadata: SharedV4ProviderMetadata;
   } {
     const content = this.extractContent(response);
-    const finishReason = mapOllamaFinishReason(response.done_reason);
+    const hasToolCalls = content.some((item) => item.type === "tool-call");
+    const rawFinishReason = mapOllamaFinishReason(response.done_reason);
+    const finishReason: LanguageModelV4FinishReason =
+      hasToolCalls && rawFinishReason.unified !== "tool-calls"
+        ? { unified: "tool-calls", raw: "tool_calls" }
+        : rawFinishReason;
     const usage = this.extractUsage(response);
-    const providerMetadata: SharedV2ProviderMetadata = { ollama: {} };
+    const providerMetadata: SharedV4ProviderMetadata = { ollama: {} };
 
     return {
       content,
@@ -64,8 +69,8 @@ export class OllamaResponseProcessor {
     };
   }
 
-  private extractContent(response: OllamaResponse): LanguageModelV2Content[] {
-    const content: LanguageModelV2Content[] = [];
+  private extractContent(response: OllamaResponse): LanguageModelV4Content[] {
+    const content: LanguageModelV4Content[] = [];
 
     // Add text content
     const text = response.message.content;
@@ -76,11 +81,20 @@ export class OllamaResponseProcessor {
       });
     }
 
+    // Add thinking content
+    const thinking = response.message.thinking;
+    if (thinking != null && thinking.length > 0) {
+      content.push({
+        type: "reasoning",
+        text: thinking,
+      });
+    }
+
     // Add tool calls
     for (const toolCall of response.message.tool_calls ?? []) {
       content.push({
         type: "tool-call" as const,
-        toolCallId: toolCall.id ?? (this.config.generateId?.() ?? generateId()),
+        toolCallId: toolCall.id ?? this.config.generateId?.() ?? generateId(),
         toolName: toolCall.function.name,
         input: JSON.stringify(toolCall.function.arguments),
       });
@@ -89,13 +103,19 @@ export class OllamaResponseProcessor {
     return content;
   }
 
-  private extractUsage(response: OllamaResponse): LanguageModelV2Usage {
+  private extractUsage(response: OllamaResponse): LanguageModelV4Usage {
     return {
-      inputTokens: response.prompt_eval_count ?? undefined,
-      outputTokens: response.eval_count ?? undefined,
-      totalTokens: (response.prompt_eval_count ?? 0) + (response.eval_count ?? 0),
-      reasoningTokens: undefined, // Ollama doesn't provide separate reasoning tokens
-      cachedInputTokens: undefined,
+      inputTokens: {
+        total: response.prompt_eval_count ?? 0,
+        noCache: undefined,
+        cacheRead: undefined,
+        cacheWrite: undefined,
+      },
+      outputTokens: {
+        total: response.eval_count ?? 0,
+        text: undefined,
+        reasoning: undefined,
+      },
     };
   }
 }
@@ -134,4 +154,4 @@ export function extractOllamaResponseObjectsFromChunk(
   }
 
   return results;
-} 
+}

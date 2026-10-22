@@ -1,15 +1,15 @@
 import {
   InvalidPromptError,
-  LanguageModelV2Prompt,
+  LanguageModelV4Prompt,
   UnsupportedFunctionalityError,
-} from '@ai-sdk/provider';
+} from "@ai-sdk/provider";
 
 export function convertToOllamaCompletionPrompt({
   prompt,
-  user = 'user',
-  assistant = 'assistant',
+  user = "user",
+  assistant = "assistant",
 }: {
-  prompt: LanguageModelV2Prompt;
+  prompt: LanguageModelV4Prompt;
   user?: string;
   assistant?: string;
 }): {
@@ -17,62 +17,88 @@ export function convertToOllamaCompletionPrompt({
   stopSequences?: string[];
 } {
   // transform to a chat message format:
-  let text = '';
+  let text = "";
 
   // if first message is a system message, add it to the text:
-  if (prompt[0].role === 'system') {
+  if (prompt[0].role === "system") {
     text += `${prompt[0].content}\n\n`;
     prompt = prompt.slice(1);
   }
 
   for (const { role, content } of prompt) {
     switch (role) {
-      case 'system': {
+      case "system": {
         throw new InvalidPromptError({
-          message: 'Unexpected system message in prompt: ${content}',
+          message: "Unexpected system message in prompt: ${content}",
           prompt,
         });
       }
 
-      case 'user': {
+      case "user": {
         const userMessage = content
-          .map(part => {
+          .map((part) => {
             switch (part.type) {
-              case 'text': {
+              case "text": {
                 return part.text;
+              }
+              case "file": {
+                throw new UnsupportedFunctionalityError({
+                  functionality: "file parts in completion prompts",
+                });
+              }
+              default: {
+                const _exhaustiveCheck: never = part;
+                throw new Error(`Unsupported user part: ${_exhaustiveCheck}`);
               }
             }
           })
           .filter(Boolean)
-          .join('');
+          .join("");
 
         text += `${user}:\n${userMessage}\n\n`;
         break;
       }
 
-      case 'assistant': {
+      case "assistant": {
         const assistantMessage = content
-          .map(part => {
+          .map((part) => {
             switch (part.type) {
-              case 'text': {
+              case "text": {
                 return part.text;
               }
-              case 'tool-call': {
+              case "reasoning": {
+                return part.text;
+              }
+              case "tool-call": {
                 throw new UnsupportedFunctionalityError({
-                  functionality: 'tool-call messages',
+                  functionality: "tool-call messages",
                 });
+              }
+              case "file":
+              case "reasoning-file":
+              case "custom":
+              case "tool-result": {
+                throw new UnsupportedFunctionalityError({
+                  functionality: `${part.type} parts in completion prompts`,
+                });
+              }
+              default: {
+                const _exhaustiveCheck: never = part;
+                throw new Error(
+                  `Unsupported assistant part: ${_exhaustiveCheck}`,
+                );
               }
             }
           })
-          .join('');
+          .join("");
 
         text += `${assistant}:\n${assistantMessage}\n\n`;
         break;
       }
 
-      case 'tool': {
+      case "tool": {
         throw new UnsupportedFunctionalityError({
-          functionality: 'tool messages',
+          functionality: "tool messages",
         });
       }
 

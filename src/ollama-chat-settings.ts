@@ -220,24 +220,20 @@ export const ollamaProviderOptions = z.object({
    * Only supported by certain models like DeepSeek R1 and Qwen 3.
    */
   think: z.boolean().optional(),
-
-  /**
-   * Whether to enable parallel function calling during tool use. Default to true.
-   */
-  parallelToolCalls: z.boolean().optional(),
-
-  /**
-   * A unique identifier representing your end-user, which can help Ollama to
-   * monitor and detect abuse.
-   */
-  user: z.string().optional(),
-
-  /**
-   * Whether to use strict JSON schema validation.
-   *
-   * @default true
-   */
-  strictJsonSchema: z.boolean().optional(),
+  options: z
+    .object({
+      num_ctx: z.number().optional(),
+      repeat_last_n: z.number().optional(),
+      repeat_penalty: z.number().optional(),
+      temperature: z.number().optional(),
+      seed: z.number().optional(),
+      stop: z.array(z.string()).optional(),
+      num_predict: z.number().optional(),
+      top_k: z.number().optional(),
+      top_p: z.number().optional(),
+      min_p: z.number().optional(),
+    })
+    .optional(),
 });
 
 export type OllamaProviderOptions = z.infer<typeof ollamaProviderOptions>;

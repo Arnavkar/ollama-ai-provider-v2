@@ -1,6 +1,6 @@
 import {
-  LanguageModelV2CallOptions,
-  LanguageModelV2CallWarning,
+  LanguageModelV4CallOptions,
+  SharedV4Warning,
   UnsupportedFunctionalityError,
 } from "@ai-sdk/provider";
 import { OllamaResponsesTool } from "./ollama-responses-api-types";
@@ -8,11 +8,9 @@ import { OllamaResponsesTool } from "./ollama-responses-api-types";
 export function prepareResponsesTools({
   tools,
   toolChoice,
-  strictJsonSchema,
 }: {
-  tools: LanguageModelV2CallOptions["tools"];
-  toolChoice?: LanguageModelV2CallOptions["toolChoice"];
-  strictJsonSchema: boolean;
+  tools: LanguageModelV4CallOptions["tools"];
+  toolChoice?: LanguageModelV4CallOptions["toolChoice"];
 }): {
   tools?: Array<OllamaResponsesTool>;
   toolChoice?:
@@ -21,36 +19,61 @@ export function prepareResponsesTools({
     | "required"
     | { type: "web_search_preview" }
     | { type: "function"; name: string };
-  toolWarnings: LanguageModelV2CallWarning[];
+  toolWarnings: SharedV4Warning[];
 } {
   // when the tools array is empty, change it to undefined to prevent errors:
   tools = tools?.length ? tools : undefined;
 
-  const toolWarnings: LanguageModelV2CallWarning[] = [];
+  const toolWarnings: SharedV4Warning[] = [];
 
   if (tools == null) {
-    console.log("NO TOOLS AVAILABLE");
     return { tools: undefined, toolChoice: undefined, toolWarnings };
   }
 
   const ollamaTools: Array<OllamaResponsesTool> = [];
-  console.log("Available tools:", tools);
 
   for (const tool of tools) {
     switch (tool.type) {
-      case "function":
+      case "function": {
+        // Ensure parameters is always a non-null object (even if empty)
+        let parameters = tool.inputSchema;
+        if (!parameters) {
+          parameters = {
+            type: "object",
+            properties: {},
+            required: [],
+          };
+        } else if (
+          parameters &&
+          typeof parameters === "object" &&
+          parameters.type === "object" &&
+          parameters.properties &&
+          Object.keys(parameters.properties).length === 0
+        ) {
+          // Defensive: ensure required/optional fields are handled for empty schemas
+          parameters = {
+            ...parameters,
+            properties: {},
+            required: [],
+          };
+        }
+
         ollamaTools.push({
           type: "function",
           function: {
             name: tool.name,
             description: tool.description,
-            parameters: tool.inputSchema,
-            strict: strictJsonSchema,
+            parameters,
           },
         });
         break;
+      }
       default:
-        toolWarnings.push({ type: "unsupported-tool", tool });
+        toolWarnings.push({
+          type: "unsupported",
+          feature: "tool",
+          details: tool.name,
+        });
         break;
     }
   }

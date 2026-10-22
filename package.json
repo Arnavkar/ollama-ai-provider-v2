@@ -1,6 +1,6 @@
 {
   "name": "ollama-ai-provider-v2",
-  "version": "1.1.1",
+  "version": "4.0.1",
   "license": "Apache-2.0",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -8,7 +8,6 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist/**/*",
-    "internal/dist/**/*",
     "CHANGELOG.md"
   ],
   "scripts": {
@@ -28,32 +27,42 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
-    },
-    "./internal": {
-      "types": "./internal/dist/index.d.ts",
-      "import": "./internal/dist/index.mjs",
-      "module": "./internal/dist/index.mjs",
-      "require": "./internal/dist/index.js"
     }
   },
   "dependencies": {
-    "@ai-sdk/provider": "2.0.0",
-    "@ai-sdk/provider-utils": "3.0.1"
+    "@ai-sdk/provider": "^4.0.21",
+    "@ai-sdk/provider-utils": "^5.0.53"
   },
   "devDependencies": {
-    "@types/node": "20.17.24",
+    "@edge-runtime/vm": "^5.0.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "26.6.5",
     "@vercel/ai-tsconfig": "./tsconfig",
+    "ai": "^7.0.127",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "msw": "^2.12.14",
+    "prettier": "3.9.9",
     "tsup": "^8",
-    "typescript": "5.8.3",
-    "vite": "^7.1.2",
-    "vitest": "^3.1.4",
-    "zod": "4.0.16"
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vite": "^8.3.2",
+    "vitest": "^4.1.10",
+    "zod": "4.6.5"
   },
   "peerDependencies": {
+    "ai": "^7.0.0",
     "zod": "^4.0.16"
   },
+  "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "msw"
+    ]
   },
   "publishConfig": {
     "access": "public"
@@ -67,6 +76,23 @@
     "url": "https://github.com/nordwestt/ollama-ai-provider-v2/issues"
   },
   "keywords": [
-    "ai"
-  ]
+    "ai",
+    "vercel",
+    "ai-sdk",
+    "ai-sdk-v7",
+    "ollama",
+    "llm",
+    "provider",
+    "chat",
+    "streaming",
+    "tool-calling",
+    "thinking-mode",
+    "completion-models",
+    "local-ai",
+    "embeddings"
+  ],
+  "funding": {
+    "type": "Buy Me a Coffee",
+    "url": "https://buymeacoffee.com/nordwestt"
+  }
 }

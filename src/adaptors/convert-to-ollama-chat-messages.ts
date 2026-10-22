@@ -1,30 +1,37 @@
 import {
-  LanguageModelV2Prompt,
-} from '@ai-sdk/provider';
-import { OllamaChatPrompt } from './ollama-chat-prompt';
+  LanguageModelV4Prompt,
+  SharedV4Warning,
+} from "@ai-sdk/provider";
+import { OllamaChatPrompt } from "./ollama-chat-prompt";
+import {
+  extractOllamaFileData,
+  formatOllamaToolResultOutput,
+} from "./ollama-v4-helpers";
 
 export function convertToOllamaChatMessages({
   prompt,
-  systemMessageMode = 'system',
+  systemMessageMode = "system",
+  warnings = [],
 }: {
-  prompt: LanguageModelV2Prompt;
-  systemMessageMode?: 'system' | 'developer' | 'remove';
+  prompt: LanguageModelV4Prompt;
+  systemMessageMode?: "system" | "developer" | "remove";
+  warnings?: Array<SharedV4Warning>;
 }): OllamaChatPrompt {
   const messages: OllamaChatPrompt = [];
 
   for (const { role, content } of prompt) {
     switch (role) {
-      case 'system': {
+      case "system": {
         switch (systemMessageMode) {
-          case 'system': {
-            messages.push({ role: 'system', content });
+          case "system": {
+            messages.push({ role: "system", content });
             break;
           }
-          case 'developer': {
-            messages.push({ role: 'developer', content });
+          case "developer": {
+            messages.push({ role: "developer", content });
             break;
           }
-          case 'remove': {
+          case "remove": {
             break;
           }
           default: {
@@ -37,41 +44,50 @@ export function convertToOllamaChatMessages({
         break;
       }
 
-      case 'user': {
-        if (content.length === 1 && content[0].type === 'text') {
-          messages.push({ role: 'user', content: content[0].text });
+      case "user": {
+        if (content.length === 1 && content[0].type === "text") {
+          messages.push({ role: "user", content: content[0].text });
           break;
         }
 
-        const userText = content.filter((part) => part.type === 'text').map((part) => part.text).join('');
+        const userText = content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("");
+        const images = content
+          .filter((part): part is Extract<typeof part, { type: "file" }> => {
+            return part.type === "file" && part.mediaType.startsWith("image/");
+          })
+          .map((part) => extractOllamaFileData(part.data));
 
         messages.push({
-          role: 'user',
+          role: "user",
           content: userText.length > 0 ? userText : [],
+          images: images.length > 0 ? images : undefined,
         });
 
         break;
       }
 
-      case 'assistant': {
-        let text = '';
-        let thinking = '';
+      case "assistant": {
+        let text = "";
+        let thinking = "";
         const toolCalls: Array<{
           id: string;
-          type: 'function';
+          type: "function";
           function: { name: string; arguments: object };
         }> = [];
 
         for (const part of content) {
           switch (part.type) {
-            case 'text': {
+            case "text": {
               text += part.text;
               break;
             }
-            case 'tool-call': {
+            case "tool-call": {
               toolCalls.push({
                 id: part.toolCallId,
-                type: 'function',
+                type: "function",
                 function: {
                   name: part.toolName,
                   arguments: part.input as object,
@@ -79,18 +95,29 @@ export function convertToOllamaChatMessages({
               });
               break;
             }
-            case 'reasoning': {
+            case "reasoning": {
               thinking += part.text;
               break;
-            } 
+            }
+            case "file":
+            case "reasoning-file":
+            case "custom":
+            case "tool-result": {
+              warnings.push({
+                type: "other",
+                message: `Unsupported assistant part type "${part.type}" for Ollama chat messages`,
+              });
+              break;
+            }
             default: {
-              throw new Error(`Unsupported part: ${part}`);
+              const _exhaustiveCheck: never = part;
+              throw new Error(`Unsupported part: ${_exhaustiveCheck}`);
             }
           }
         }
-        
+
         messages.push({
-          role: 'assistant',
+          role: "assistant",
           content: text,
           ...(thinking && { thinking }),
           tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
@@ -99,28 +126,30 @@ export function convertToOllamaChatMessages({
         break;
       }
 
-      case 'tool': {
+      case "tool": {
         for (const toolResponse of content) {
-          const output = toolResponse.output;
-
-          let contentValue: string;
-          switch (output.type) {
-            case 'text':
-            case 'error-text':
-              contentValue = output.value;
+          switch (toolResponse.type) {
+            case "tool-result": {
+              messages.push({
+                role: "tool",
+                tool_call_id: toolResponse.toolCallId,
+                content: formatOllamaToolResultOutput(toolResponse.output),
+              });
               break;
-            case 'content':
-            case 'json':
-            case 'error-json':
-              contentValue = JSON.stringify(output.value);
+            }
+            case "tool-approval-response": {
+              warnings.push({
+                type: "other",
+                message:
+                  "tool approval response parts are not supported for Ollama chat messages",
+              });
               break;
+            }
+            default: {
+              const _exhaustiveCheck: never = toolResponse;
+              throw new Error(`Unsupported tool part: ${_exhaustiveCheck}`);
+            }
           }
-
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolResponse.toolCallId,
-            content: contentValue,
-          });
         }
         break;
       }
