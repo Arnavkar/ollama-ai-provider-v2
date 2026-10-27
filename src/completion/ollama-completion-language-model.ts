@@ -21,7 +21,10 @@ import { z } from "zod/v4";
 import { convertToOllamaCompletionPrompt } from "../adaptors/convert-to-ollama-completion-prompt";
 import { mapOllamaFinishReason } from "../adaptors/map-ollama-finish-reason";
 import { getResponseMetadata } from "../common/get-response-metadata";
-import { createNdjsonStreamResponseHandler } from "../common/ndjson-stream-handler";
+import {
+  createNdjsonStreamResponseHandler,
+  OllamaStreamResponse,
+} from "../common/ndjson-stream-handler";
 import {
   OllamaCompletionModelId,
   OllamaCompletionSettings,
@@ -262,7 +265,9 @@ export class OllamaCompletionLanguageModel implements LanguageModelV3 {
     return {
       stream: response.pipeThrough(
         new TransformStream<
-          ParseResult<z.infer<typeof baseOllamaResponseSchema>>,
+          ParseResult<
+            OllamaStreamResponse<z.infer<typeof baseOllamaResponseSchema>>
+          >,
           LanguageModelV3StreamPart
         >({
           transform(chunk, controller) {
